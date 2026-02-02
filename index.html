@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Игра для Мирона</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: none;
+            overflow: hidden;
+            background: #f0f9ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        .game-canvas {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .draggable {
+            cursor: grab;
+            touch-action: none;
+            z-index: 100;
+        }
+
+        .draggable:active {
+            cursor: grabbing;
+        }
+
+        .wood-texture {
+            background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 4px);
+        }
+
+        .celebration {
+            position: absolute;
+            pointer-events: none;
+            animation: pop 0.8s ease-out forwards;
+            font-size: 4rem;
+            z-index: 200;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0) translateY(0); opacity: 0; }
+            50% { transform: scale(1.5) translateY(-50px); opacity: 1; }
+            100% { transform: scale(1) translateY(-100px); opacity: 0; }
+        }
+
+        .target-slot {
+            fill: #e2e8f0;
+            stroke: #94a3b8;
+            stroke-width: 3;
+            stroke-dasharray: 10,6;
+        }
+
+        .nav-btn {
+            background: white;
+            padding: 0.6rem 1.2rem;
+            border-radius: 9999px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-weight: 800;
+            pointer-events: auto;
+            border: 2px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:active { transform: scale(0.95); }
+
+        #scratchContainer {
+            position: relative;
+            width: 95vw;
+            height: 60vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #fff;
+            border-radius: 30px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        #colorLayer {
+            position: absolute;
+            display: block;
+            pointer-events: none;
+            z-index: 1;
+        }
+        #scratchCanvas {
+            position: absolute;
+            z-index: 2;
+            cursor: crosshair;
+            touch-action: none;
+            display: block;
+        }
+
+        #victoryModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+        .modal-content {
+            background: white;
+            padding: 3rem;
+            border-radius: 50px;
+            text-align: center;
+            max-width: 90%;
+            border: 10px solid #22c55e;
+            animation: bounceIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .level-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #cbd5e1;
+            transition: all 0.4s;
+            border: 2px solid white;
+        }
+        .level-dot.active {
+            background: #3b82f6;
+            transform: scale(1.3);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+        .level-dot.done {
+            background: #22c55e;
+        }
+
+        .nature-card {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.08);
+            border: 4px solid white;
+        }
+
+        .nature-target-zone {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            border: 4px dashed rgba(255,255,255,0.9);
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .placed-nature-emoji {
+            position: absolute;
+            font-size: 4rem;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 60;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-canvas" id="gameScreen">
+    <div class="w-full px-4 pt-4 flex justify-between items-center z-50">
+        <div class="nav-btn text-orange-500 text-sm" id="resetBtn">СБРОС</div>
+        <div class="flex flex-col items-center">
+            <div id="levelDots" class="flex gap-2 mb-1"></div>
+            <span id="progressText" class="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center"></span>
+        </div>
+        <div class="flex gap-2">
+            <div class="nav-btn text-blue-500" id="prevBtn">←</div>
+            <div class="nav-btn text-blue-500" id="nextBtn">→</div>
+        </div>
+    </div>
+
+    <div id="mainZone" class="flex-1 w-full flex flex-col items-center justify-center overflow-hidden">
+        <h2 id="levelTitle" class="text-xl md:text-3xl font-black text-slate-700 mb-2 px-4 text-center text-balance"></h2>
+        <div id="stage" class="relative w-full h-[65vh] flex items-center justify-center px-4"></div>
+    </div>
+
+    <div id="piecesContainer" class="w-full h-[22vh] min-h-[140px] bg-white/70 backdrop-blur-md rounded-t-[40px] shadow-2xl border-t-4 border-white flex gap-4 items-center justify-center overflow-x-auto px-6 py-4"></div>
+</div>
+
+<div id="victoryModal">
+    <div class="modal-content shadow-2xl">
+        <div class="text-9xl mb-6">🏆</div>
+        <h2 class="text-5xl font-black text-blue-600 mb-4 text-balance">МОЛОДЕЦ Мирон!</h2>
+        <p class="text-2xl text-slate-600 mb-10 font-bold">ты прошёл все уровни!!</p>
+        <a href="levl2" class="inline-block bg-green-500 hover:bg-green-600 text-white font-black py-6 px-12 rounded-full text-3xl shadow-xl transform transition hover:scale-105 active:scale-95">
+            ПЕРЕЙТИ ДАЛЬШЕ ➔
+        </a>
+    </div>
+</div>
+
+<script>
+    const levels = [
+        {
+            id: 'house', title: 'Собери домик', viewBox: '0 0 500 500', isPuzzle: true,
+            targets: [
+                { id: 'h1', type: 'rect', x: 100, y: 250, w: 300, h: 180, color: '#f59e0b', b: {x: 100, y: 250, w: 300, h: 180} },
+                { id: 'h2', type: 'path', d: 'M100 250 L250 100 L250 250 Z', color: '#3b82f6', b: {x: 100, y: 100, w: 150, h: 150} },
+                { id: 'h3', type: 'path', d: 'M250 100 L400 250 L250 250 Z', color: '#2563eb', b: {x: 250, y: 100, w: 150, h: 150} },
+                { id: 'h4', type: 'rect', x: 210, y: 330, w: 80, h: 100, color: '#78350f', b: {x: 210, y: 330, w: 80, h: 100} },
+                { id: 'h5', type: 'circle', cx: 250, cy: 190, r: 35, color: '#23445f', b: {x: 215, y: 155, w: 70, h: 70} }
+            ]
+        },
+        {
+            id: 'tractor', title: 'Мощный трактор', viewBox: '0 0 500 500', isPuzzle: true,
+            targets: [
+                { id: 't1', type: 'rect', x: 100, y: 200, w: 220, h: 120, color: '#22c55e', b: {x: 100, y: 200, w: 220, h: 120} },
+                { id: 't2', type: 'rect', x: 300, y: 140, w: 120, h: 180, color: '#16a34a', b: {x: 300, y: 140, w: 120, h: 180} },
+                { id: 't3', type: 'circle', cx: 160, cy: 320, r: 50, color: '#0f172a', b: {x: 110, y: 270, w: 100, h: 100} },
+                { id: 't4', type: 'circle', cx: 360, cy: 310, r: 80, color: '#0f172a', b: {x: 280, y: 230, w: 160, h: 160} },
+                { id: 't5', type: 'rect', x: 140, y: 130, w: 30, h: 70, color: '#475569', b: {x: 140, y: 130, w: 30, h: 70} }
+            ]
+        },
+        {
+            id: 'plane', title: 'Самолет-кукурузник', viewBox: '0 0 500 500', isPuzzle: true,
+            targets: [
+                { id: 'p1', type: 'path', d: 'M50 230 Q50 180 150 180 L380 200 L380 260 L150 280 Q50 280 50 230', color: '#94a3b8', b: {x: 50, y: 180, w: 330, h: 100} },
+                { id: 'p2', type: 'path', d: 'M200 180 L140 40 L280 40 L300 185 Z', color: '#ef4444', b: {x: 140, y: 40, w: 160, h: 145} },
+                { id: 'p3', type: 'path', d: 'M200 280 L140 420 L280 420 L300 275 Z', color: '#ef4444', b: {x: 140, y: 275, w: 160, h: 145} },
+                { id: 'p4', type: 'path', d: 'M380 230 L450 160 L470 160 L470 300 L450 300 Z', color: '#3b82f6', b: {x: 380, y: 160, w: 90, h: 140} },
+                { id: 'p5', type: 'rect', x: 40, y: 160, w: 15, h: 140, color: '#1e293b', b: {x: 40, y: 160, w: 15, h: 140} }
+            ]
+        },
+        { 
+            id: 'nature_mix', title: 'Мир природы: Разложи всё!', isNature: true,
+            cards: [
+                { id: 'c1', type: 'coconut', emoji: '🥥', tx: '50%', ty: '50%', bg: '#7dd3fc' },
+                { id: 'c2', type: 'apple', emoji: '🍎', tx: '50%', ty: '35%', bg: '#4ade80' },
+                { id: 'c3', type: 'blueberry', emoji: '🫐', tx: '50%', ty: '50%', bg: '#dcfce7' },
+                { id: 'c4', type: 'flower', emoji: '🌻', tx: '50%', ty: '85%', bg: '#fef08a' }
+            ]
+        },
+        { id: 'shark', title: 'Раскрась Бейби Шарка!', isShark: true }
+    ];
+
+    let currentLevelIdx = 0;
+    const gameState = {
+        completedLevels: new Set(),
+        puzzleProgress: {},
+        sharkCanvasData: null,
+        natureProgress: {},
+        isTransitioning: false
+    };
+
+    const state = { draggedElement: null, draggedData: null };
+
+    function updateNavDots() {
+        const container = document.getElementById('levelDots');
+        container.innerHTML = '';
+        levels.forEach((l, i) => {
+            const dot = document.createElement('div');
+            dot.className = `level-dot ${i === currentLevelIdx ? 'active' : ''} ${gameState.completedLevels.has(l.id) ? 'done' : ''}`;
+            container.appendChild(dot);
+        });
+    }
+
+    function initLevel() {
+        if (gameState.isTransitioning) return;
+        const level = levels[currentLevelIdx];
+        document.getElementById('levelTitle').textContent = level.title;
+        document.getElementById('progressText').textContent = `ЗАДАНИЕ ${currentLevelIdx + 1}/${levels.length}`;
+        updateNavDots();
+        
+        const stage = document.getElementById('stage');
+        const pieces = document.getElementById('piecesContainer');
+        stage.innerHTML = '';
+        pieces.innerHTML = '';
+
+        if (level.isNature) renderNatureWorld(stage, pieces);
+        else if (level.isShark) renderShark(stage, pieces);
+        else renderPuzzle(level, stage, pieces);
+    }
+
+    function renderNatureWorld(stage, pieces) {
+        const level = levels[currentLevelIdx];
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-2 gap-4 w-full h-full max-w-[650px] aspect-square';
+        
+        level.cards.forEach(card => {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'nature-card relative';
+            cardDiv.style.background = card.bg;
+            
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("viewBox", "0 0 200 200");
+            svg.classList.add("absolute", "inset-0", "w-full", "h-full");
+
+            if (card.id === 'c1') {
+                svg.innerHTML = `
+                    <rect width="200" height="200" fill="#7dd3fc"/>
+                    <path d="M0 200 Q100 160 200 200 Z" fill="#fde047"/>
+                    <path d="M40 180 Q50 120 70 60" stroke="#92400e" stroke-width="10" fill="none" stroke-linecap="round"/>
+                    <path d="M70 60 Q120 20 180 80" fill="#16a34a"/>
+                    <path d="M70 60 Q20 20 -40 80" fill="#16a34a"/>
+                    <path d="M70 60 Q70 -10 120 20" fill="#15803d"/>
+                    <text x="60" y="85" font-size="25" opacity="0.1">🥥</text>
+                `;
+            } else if (card.id === 'c2') {
+                svg.innerHTML = `
+                    <rect x="90" y="120" width="20" height="80" fill="#451a03"/>
+                    <circle cx="100" cy="80" r="70" fill="#16a34a"/>
+                    <text x="80" y="60" font-size="25" opacity="0.1">🍎</text>
+                `;
+            } else if (card.id === 'c3') {
+                svg.innerHTML = `
+                    <rect x="0" y="160" width="200" height="40" fill="#22c55e"/>
+                    <!-- Пышный зеленый куст -->
+                    <circle cx="100" cy="110" r="48" fill="#065f46"/>
+                    <circle cx="65" cy="130" r="42" fill="#064e3b"/>
+                    <circle cx="135" cy="130" r="42" fill="#064e3b"/>
+                    <circle cx="85" cy="155" r="35" fill="#065f46"/>
+                    <circle cx="115" cy="155" r="35" fill="#065f46"/>
+                    <text x="75" y="120" font-size="18" opacity="0.1">🫐</text>
+                `;
+            } else if (card.id === 'c4') {
+                svg.innerHTML = `
+                    <rect x="0" y="150" width="200" height="50" fill="#22c55e"/>
+                    <text x="20" y="180" font-size="35">🌻</text>
+                    <text x="140" y="185" font-size="35">🌻</text>
+                `;
+            }
+            cardDiv.appendChild(svg);
+
+            const target = document.createElement('div');
+            target.className = 'nature-target-zone';
+            target.style.left = card.tx; target.style.top = card.ty;
+            target.dataset.id = card.id; target.id = `target-${card.id}`;
+            
+            if (gameState.natureProgress[card.id]) {
+                const placed = document.createElement('div');
+                placed.className = 'placed-nature-emoji';
+                placed.textContent = card.emoji;
+                placed.style.left = card.tx; placed.style.top = card.ty;
+                cardDiv.appendChild(placed);
+                target.style.display = 'none';
+            }
+            
+            cardDiv.appendChild(target);
+            grid.appendChild(cardDiv);
+        });
+        stage.appendChild(grid);
+
+        level.cards.forEach(card => {
+            if (!gameState.natureProgress[card.id]) {
+                const wrap = document.createElement('div');
+                wrap.className = 'flex flex-col items-center gap-1 bg-white p-3 rounded-2xl shadow-sm w-24 h-24 justify-center';
+                const item = document.createElement('div');
+                item.className = 'draggable text-7xl cursor-pointer';
+                item.textContent = card.emoji;
+                item.dataset.type = 'nature-item';
+                item.dataset.cardId = card.id;
+                item.addEventListener('mousedown', startDrag);
+                item.addEventListener('touchstart', startDrag, { passive: false });
+                wrap.appendChild(item);
+                pieces.appendChild(wrap);
+            }
+        });
+    }
+
+    function renderPuzzle(level, stage, pieces) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", level.viewBox);
+        svg.classList.add("w-full", "h-full", "max-w-[500px]", "drop-shadow-lg");
+        level.targets.forEach(t => {
+            const slot = document.createElementNS("http://www.w3.org/2000/svg", t.type);
+            slot.classList.add("target-slot"); slot.dataset.id = t.id;
+            if (gameState.puzzleProgress[t.id]) { slot.style.fill = t.color; slot.style.strokeDasharray = 'none'; slot.style.stroke = 'white'; }
+            if (t.type === 'rect') { slot.setAttribute("x", t.x); slot.setAttribute("y", t.y); slot.setAttribute("width", t.w); slot.setAttribute("height", t.h); slot.setAttribute("rx", "10"); }
+            else if (t.type === 'circle') { slot.setAttribute("cx", t.cx); slot.setAttribute("cy", t.cy); slot.setAttribute("r", t.r); }
+            else { slot.setAttribute("d", t.d); }
+            svg.appendChild(slot);
+        });
+        stage.appendChild(svg);
+        const shuffled = [...level.targets].sort(() => Math.random() - 0.5);
+        shuffled.forEach(t => { if (!gameState.puzzleProgress[t.id]) pieces.appendChild(createPiece(t)); });
+    }
+
+    function createPiece(t) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'flex-shrink-0 w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-md border-2 border-slate-100 p-1';
+        const piece = document.createElement('div');
+        piece.className = 'draggable wood-texture w-full h-full';
+        piece.dataset.id = t.id;
+        const innerSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        const b = t.b; const pad = 30;
+        innerSvg.setAttribute("viewBox", `${b.x - pad} ${b.y - pad} ${b.w + pad*2} ${b.h + pad*2}`);
+        innerSvg.setAttribute("width", "100%"); innerSvg.setAttribute("height", "100%");
+        const shape = document.createElementNS("http://www.w3.org/2000/svg", t.type);
+        shape.setAttribute("fill", t.color);
+        if (t.type === 'rect') { shape.setAttribute("x", t.x); shape.setAttribute("y", t.y); shape.setAttribute("width", t.w); shape.setAttribute("height", t.h); shape.setAttribute("rx", "10"); }
+        else if (t.type === 'circle') { shape.setAttribute("cx", t.cx); shape.setAttribute("cy", t.cy); shape.setAttribute("r", t.r); }
+        else { shape.setAttribute("d", t.d); }
+        innerSvg.appendChild(shape);
+        piece.appendChild(innerSvg);
+        piece.style.color = t.color;
+        piece.addEventListener('mousedown', startDrag);
+        piece.addEventListener('touchstart', startDrag, { passive: false });
+        wrapper.appendChild(piece);
+        return wrapper;
+    }
+
+    function renderShark(stage, pieces) {
+        stage.innerHTML = `<div id="scratchContainer"><img id="colorLayer" src="img/baby_shark.png" onerror="this.src='https://placehold.co/800x600?text=Baby+Shark'"><canvas id="scratchCanvas"></canvas></div>`;
+        const canvas = document.getElementById('scratchCanvas'); const colorImg = document.getElementById('colorLayer'); const container = document.getElementById('scratchContainer');
+        const pieceCont = document.getElementById('piecesContainer');
+        
+        pieceCont.innerHTML = `
+            <div class="flex flex-col items-center gap-2">
+                <span class="text-blue-600 font-black animate-pulse uppercase">Стирай пальчиком серое!</span>
+                <div id="sharkReadyBtn" class="bg-blue-500 text-white px-8 py-3 rounded-full font-black shadow-lg cursor-pointer transform transition active:scale-90" style="display: none;">ГОТОВО! ✅</div>
+            </div>
+        `;
+        
+        colorImg.onload = () => {
+            const ratio = Math.min(container.clientWidth / colorImg.naturalWidth, container.clientHeight / colorImg.naturalHeight);
+            const finalW = Math.floor(colorImg.naturalWidth * ratio); 
+            const finalH = Math.floor(colorImg.naturalHeight * ratio);
+            colorImg.style.width = finalW + 'px'; 
+            colorImg.style.height = finalH + 'px'; 
+            canvas.width = finalW; 
+            canvas.height = finalH;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            if (gameState.sharkCanvasData) { 
+                const img = new Image(); 
+                img.onload = () => ctx.drawImage(img, 0, 0); 
+                img.src = gameState.sharkCanvasData;
+            } else { 
+                ctx.drawImage(colorImg, 0, 0, finalW, finalH); 
+                ctx.fillStyle = "rgba(100, 100, 100, 0.98)"; 
+                ctx.fillRect(0,0,finalW,finalH);
+                ctx.fillStyle = "white";
+                ctx.font = "bold 25px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("СОТРИ ПАЛЬЧИКОМ!", finalW/2, finalH/2);
+            }
+            
+            let isErasing = false;
+            let strokesCount = 0;
+
+            const erase = (e) => {
+                if (!isErasing) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+                const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.beginPath(); ctx.arc(x, y, 65, 0, Math.PI * 2); ctx.fill();
+                strokesCount++;
+                if (strokesCount > 10) document.getElementById('sharkReadyBtn').style.display = 'block';
+            };
+            
+            const checkCompletion = () => {
+                const d = ctx.getImageData(0,0,canvas.width,canvas.height).data;
+                let cleared = 0; 
+                for(let i=3; i<d.length; i+=4) if(d[i] < 100) cleared++;
+                
+                const total = canvas.width * canvas.height;
+                // Снижаем порог до 50%, чтобы точно засчитало
+                if (cleared / total > 0.50) { 
+                    if (!gameState.completedLevels.has('shark')) {
+                        markLevelComplete('shark'); 
+                        setTimeout(goToNextIncomplete, 1500); 
+                    }
+                }
+            };
+            
+            const handleStart = (e) => { if(e.cancelable) e.preventDefault(); isErasing = true; };
+            const handleStop = () => { 
+                if(isErasing){
+                    isErasing=false; 
+                    gameState.sharkCanvasData=canvas.toDataURL(); 
+                    checkCompletion();
+                } 
+            };
+            
+            canvas.addEventListener('mousedown', handleStart);
+            canvas.addEventListener('touchstart', handleStart, {passive:false});
+            window.addEventListener('mouseup', handleStop);
+            window.addEventListener('touchend', handleStop);
+            canvas.addEventListener('mousemove', erase);
+            canvas.addEventListener('touchmove', (e)=>{if(isErasing){if(e.cancelable) e.preventDefault(); erase(e);}}, {passive:false});
+            
+            document.getElementById('sharkReadyBtn').onclick = () => {
+                if (!gameState.completedLevels.has('shark')) {
+                    markLevelComplete('shark'); 
+                    setTimeout(goToNextIncomplete, 1000); 
+                }
+            };
+        };
+    }
+
+    function goToNextIncomplete() {
+        if (gameState.isTransitioning) return;
+        
+        let nextIdx = -1;
+        for (let i = 1; i <= levels.length; i++) {
+            const idx = (currentLevelIdx + i) % levels.length;
+            if (!gameState.completedLevels.has(levels[idx].id)) {
+                nextIdx = idx;
+                break;
+            }
+        }
+        
+        if (nextIdx !== -1) {
+            currentLevelIdx = nextIdx;
+            initLevel();
+        } else {
+            checkTotalVictory();
+        }
+    }
+
+    function startDrag(e) {
+        if (e.cancelable) e.preventDefault();
+        const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+        const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
+        const clone = e.currentTarget.cloneNode(true);
+        clone.style.position = 'fixed'; clone.style.width = e.currentTarget.offsetWidth + 'px'; clone.style.height = e.currentTarget.offsetHeight + 'px';
+        clone.style.left = clientX + 'px'; clone.style.top = clientY + 'px'; clone.style.transform = 'translate(-50%, -50%)';
+        clone.style.opacity = '0.85'; clone.style.pointerEvents = 'none'; clone.style.zIndex = '1000';
+        document.body.appendChild(clone); state.draggedElement = clone; state.draggedData = { ...e.currentTarget.dataset };
+        window.addEventListener('mousemove', drag); window.addEventListener('touchmove', drag, { passive: false });
+        window.addEventListener('mouseup', endDrag); window.addEventListener('touchend', endDrag);
+    }
+
+    function drag(e) { if (!state.draggedElement) return; const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX; const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY; state.draggedElement.style.left = clientX + 'px'; state.draggedElement.style.top = clientY + 'px'; }
+
+    function endDrag(e) {
+        if (!state.draggedElement) return;
+        const clientX = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
+        const clientY = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY);
+        const level = levels[currentLevelIdx];
+        
+        let found = false;
+
+        if (level.isNature) {
+            const target = document.getElementById(`target-${state.draggedData.cardId}`);
+            if (target) {
+                const r = target.getBoundingClientRect();
+                if (Math.hypot(clientX - (r.left + r.width/2), clientY - (r.top + r.height/2)) < 85) {
+                    gameState.natureProgress[state.draggedData.cardId] = true;
+                    showCelebration(clientX, clientY, '🌟');
+                    found = true;
+                }
+            }
+        } else if (level.isPuzzle) {
+            const slots = document.querySelectorAll('.target-slot');
+            slots.forEach(slot => {
+                const r = slot.getBoundingClientRect();
+                if (Math.hypot(clientX - (r.left + r.width/2), clientY - (r.top + r.height/2)) < 70) {
+                    if (slot.dataset.id === state.draggedData.id) {
+                        gameState.puzzleProgress[slot.dataset.id] = true;
+                        showCelebration(clientX, clientY, '🌟');
+                        found = true;
+                    }
+                }
+            });
+        }
+
+        if (found) {
+            // Перерисовываем немедленно, чтобы показать поставленную деталь
+            const stage = document.getElementById('stage');
+            const pieces = document.getElementById('piecesContainer');
+            stage.innerHTML = '';
+            pieces.innerHTML = '';
+            if (level.isNature) renderNatureWorld(stage, pieces);
+            else renderPuzzle(level, stage, pieces);
+
+            // Проверяем на завершение уровня
+            const isAllDone = level.isNature ? 
+                level.cards.every(c => gameState.natureProgress[c.id]) : 
+                level.targets.every(t => gameState.puzzleProgress[t.id]);
+            
+            if (isAllDone) {
+                gameState.isTransitioning = true;
+                markLevelComplete(level.id);
+                setTimeout(() => {
+                    gameState.isTransitioning = false;
+                    goToNextIncomplete();
+                }, 1800);
+            }
+        }
+
+        state.draggedElement.remove(); state.draggedElement = null;
+        window.removeEventListener('mousemove', drag); window.removeEventListener('touchmove', drag);
+        window.removeEventListener('mouseup', endDrag); window.removeEventListener('touchend', endDrag);
+    }
+
+    function markLevelComplete(id) {
+        if (!gameState.completedLevels.has(id)) {
+            gameState.completedLevels.add(id); 
+            updateNavDots();
+            showCelebration(window.innerWidth/2, window.innerHeight/2, '✅');
+            if (gameState.completedLevels.size === levels.length) {
+                checkTotalVictory();
+            }
+        }
+    }
+
+    function checkTotalVictory() { 
+        setTimeout(() => { 
+            document.getElementById('victoryModal').style.display = 'flex'; 
+            showCelebration(window.innerWidth/2, window.innerHeight/2, '🎉');
+        }, 800); 
+    }
+
+    function showCelebration(x, y, text) {
+        const el = document.createElement('div'); el.className = 'celebration font-black text-orange-500 pointer-events-none';
+        el.textContent = text; el.style.left = x + 'px'; el.style.top = y + 'px';
+        document.body.appendChild(el); setTimeout(() => el.remove(), 800);
+    }
+
+    document.getElementById('nextBtn').onclick = () => { currentLevelIdx = (currentLevelIdx + 1) % levels.length; initLevel(); };
+    document.getElementById('prevBtn').onclick = () => { currentLevelIdx = (currentLevelIdx - 1 + levels.length) % levels.length; initLevel(); };
+    document.getElementById('resetBtn').onclick = () => { gameState.completedLevels.clear(); gameState.puzzleProgress = {}; gameState.sharkCanvasData = null; gameState.natureProgress = {}; initLevel(); };
+
+    window.onload = initLevel;
+</script>
+</body>
+</html>

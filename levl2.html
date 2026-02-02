@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Игра для Мирона - Уровень 2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: none;
+            overflow: hidden;
+            background: #fff7ed;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        .game-canvas {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .draggable {
+            cursor: grab;
+            touch-action: none;
+            z-index: 100;
+            transition: transform 0.1s;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .draggable:active {
+            cursor: grabbing;
+            transform: scale(1.2);
+            z-index: 1000;
+        }
+
+        .celebration {
+            position: absolute;
+            pointer-events: none;
+            animation: pop 0.8s ease-out forwards;
+            font-size: 4rem;
+            z-index: 200;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0) translateY(0); opacity: 0; }
+            50% { transform: scale(1.5) translateY(-50px); opacity: 1; }
+            100% { transform: scale(1) translateY(-100px); opacity: 0; }
+        }
+
+        .nav-btn {
+            background: white;
+            padding: 0.6rem 1.2rem;
+            border-radius: 9999px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-weight: 800;
+            pointer-events: auto;
+            border: 2px solid #fed7aa;
+            transition: all 0.2s;
+        }
+
+        .drop-zone {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: translate(-50%, -50%);
+        }
+
+        #victoryModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            backdrop-filter: blur(10px);
+        }
+
+        .modal-content {
+            background: white;
+            padding: 3rem;
+            border-radius: 50px;
+            text-align: center;
+            max-width: 90%;
+            border: 10px solid #fb923c;
+            animation: bounceIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .level-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ffedd5;
+            border: 2px solid #fdba74;
+        }
+        .level-dot.active {
+            background: #fb923c;
+            transform: scale(1.3);
+        }
+        .level-dot.done {
+            background: #22c55e;
+            border-color: white;
+        }
+
+        /* КОРЗИНКИ */
+        .buckets-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .nature-basket {
+            width: 130px;
+            height: 140px;
+            border-radius: 15px 15px 50px 50px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1), inset 0 -10px 20px rgba(0,0,0,0.1);
+            border: 4px solid rgba(0,0,0,0.05);
+            background-color: white; 
+        }
+
+        .basket-label {
+            position: absolute;
+            bottom: -30px;
+            font-weight: 900;
+            font-size: 14px;
+            text-transform: uppercase;
+            text-align: center;
+            width: 100%;
+        }
+
+        /* ТЕНИ ФИГУР */
+        .shape-slot {
+            width: 100px;
+            height: 100px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.5);
+            border: 3px dashed rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .shadow-img {
+            filter: grayscale(100%) brightness(0.6) opacity(0.4);
+            width: 80%;
+            height: 80%;
+        }
+
+        /* БОЛЬШОЙ/МАЛЕНЬКИЙ (Уровень 4) */
+        .size-bins-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            width: 100%;
+            height: 100%;
+        }
+        .size-bin {
+            background: #fffbeb;
+            border: 6px solid #d97706;
+            border-radius: 30px;
+            position: relative;
+            box-shadow: inset 0 0 30px rgba(217, 119, 6, 0.1);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .size-bin-label {
+            position: absolute;
+            top: 10px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-weight: 900;
+            color: #d97706;
+            text-transform: uppercase;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* ПОКОРМИ ЖИВОТНЫХ (Уровень 5) */
+        .feed-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-items: center;
+        }
+        .animal-card {
+            width: 140px;
+            height: 180px;
+            background: white;
+            border-radius: 20px;
+            border: 4px solid #fcd34d;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            position: relative;
+            box-shadow: 0 8px 0 #fcd34d;
+        }
+        .animal-emoji {
+            font-size: 5rem;
+            position: absolute;
+            top: -20px;
+        }
+        .food-plate {
+            width: 100px;
+            height: 60px;
+            background: #fef3c7;
+            border-radius: 10px 10px 30px 30px;
+            margin-bottom: 20px;
+            border: 2px solid #fde68a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-canvas" id="gameScreen">
+    <!-- Верхняя панель -->
+    <div class="w-full px-4 pt-4 flex justify-between items-center z-50">
+        <div class="nav-btn text-orange-500 text-sm cursor-pointer" id="resetBtn">ЗАНОВО</div>
+        <div class="flex flex-col items-center">
+            <div id="levelDots" class="flex gap-2 mb-1"></div>
+            <span id="progressText" class="text-[10px] font-black text-orange-300 uppercase tracking-widest text-center"></span>
+        </div>
+        <div class="flex gap-2">
+            <div class="nav-btn text-orange-500 cursor-pointer" id="prevBtn">←</div>
+            <div class="nav-btn text-orange-500 cursor-pointer" id="nextBtn">→</div>
+        </div>
+    </div>
+
+    <!-- Основная зона -->
+    <div id="mainZone" class="flex-1 w-full flex flex-col items-center justify-center overflow-hidden relative">
+        <h2 id="levelTitle" class="text-xl md:text-3xl font-black text-orange-700 mb-4 px-4 text-center z-10 transition-all duration-300"></h2>
+        <div id="stage" class="w-full h-[60vh] flex items-center justify-center"></div>
+    </div>
+
+    <!-- Нижняя панель с деталями -->
+    <div id="piecesContainer" class="w-full h-[22vh] min-h-[150px] bg-white/90 backdrop-blur-md rounded-t-[40px] shadow-2xl border-t-4 border-orange-100 flex gap-4 items-center justify-start overflow-x-auto px-6 py-4 scroll-smooth"></div>
+</div>
+
+<!-- Модальное окно победы -->
+<div id="victoryModal">
+    <div class="modal-content shadow-2xl">
+        <div class="text-9xl mb-6">🎈</div>
+        <h2 class="text-5xl font-black text-orange-600 mb-4">ТЫ ГЕРОЙ, МИРОН!</h2>
+        <p class="text-2xl text-slate-600 mb-10 font-bold">Ты справился со всеми задачками!</p>
+        <button onclick="location.reload()" class="inline-block bg-orange-500 hover:bg-orange-600 text-white font-black py-6 px-12 rounded-full text-3xl shadow-xl transform transition hover:scale-105 active:scale-95 cursor-pointer">
+            ИГРАТЬ ЕЩЕ РАЗ ➔
+        </button>
+    </div>
+</div>
+
+<script>
+    const levels = [
+        {
+            id: 'colors',
+            title: 'Разложи по цвету',
+            type: 'sort',
+            targets: [
+                { id: 'red_b', color: '#fca5a5', bg: '#fee2e2', label: 'КРАСНАЯ', type: 'red', x: '20%', y: '50%' },
+                { id: 'yellow_b', color: '#fde047', bg: '#fef9c3', label: 'ЖЕЛТАЯ', type: 'yellow', x: '50%', y: '50%' },
+                { id: 'purple_b', color: '#c084fc', bg: '#f3e8ff', label: 'ФИОЛЕТОВАЯ', type: 'purple', x: '80%', y: '50%' }
+            ],
+            items: [
+                { id: 'c1', emoji: '🍎', type: 'red' }, { id: 'c2', emoji: '🍌', type: 'yellow' },
+                { id: 'c3', emoji: '🍇', type: 'purple' }, { id: 'c4', emoji: '🍓', type: 'red' },
+                { id: 'c5', emoji: '🍋', type: 'yellow' }, { id: 'c6', emoji: '🍆', type: 'purple' },
+                { id: 'c7', emoji: '🍅', type: 'red' }, { id: 'c8', emoji: '🧀', type: 'yellow' },
+                { id: 'c9', emoji: '🫐', type: 'purple' }, { id: 'c10', emoji: '🍒', type: 'red' }
+            ]
+        },
+        {
+            id: 'shapes',
+            title: 'Фигурка в свою тень',
+            type: 'match',
+            targets: [
+                { id: 's1', shape: 'circle', color: '#f87171', x: '20%', y: '50%' },
+                { id: 's2', shape: 'square', color: '#60a5fa', x: '40%', y: '50%' },
+                { id: 's3', shape: 'triangle', color: '#4ade80', x: '60%', y: '50%' },
+                { id: 's4', shape: 'star', color: '#eab308', x: '80%', y: '50%' }
+            ],
+            items: [
+                { id: 'it1', shape: 'circle', color: '#ef4444' },
+                { id: 'it2', shape: 'square', color: '#3b82f6' },
+                { id: 'it3', shape: 'triangle', color: '#22c55e' },
+                { id: 'it4', shape: 'star', color: '#eab308' }
+            ]
+        },
+        {
+            id: 'shadows',
+            title: 'Угадай кто это?',
+            type: 'shadow',
+            targets: [
+                { id: 'sh1', emoji: '🐘', x: '16%', y: '50%' },
+                { id: 'sh2', emoji: '🦁', x: '33%', y: '50%' },
+                { id: 'sh3', emoji: '🐢', x: '50%', y: '50%' },
+                { id: 'sh4', emoji: '🦒', x: '66%', y: '50%' },
+                { id: 'sh5', emoji: '🐊', x: '83%', y: '50%' }
+            ],
+            items: [
+                { id: 'an1', emoji: '🐘', type: 'sh1' },
+                { id: 'an2', emoji: '🦁', type: 'sh2' },
+                { id: 'an3', emoji: '🐢', type: 'sh3' },
+                { id: 'an4', emoji: '🦒', type: 'sh4' },
+                { id: 'an5', emoji: '🐊', type: 'sh5' }
+            ]
+        },
+        {
+            id: 'sizes',
+            title: 'Большой и маленький',
+            type: 'size',
+            targets: [
+                { id: 'big_c', label: 'БОЛЬШИЕ', width: '250px', height: '250px', type: 'big' },
+                { id: 'small_c', label: 'МАЛЕНЬКИЕ', width: '150px', height: '150px', type: 'small' }
+            ],
+            items: [
+                { id: 'z1', emoji: '🧸', size: 'text-7xl', type: 'big' },
+                { id: 'z2', emoji: '🧸', size: 'text-3xl', type: 'small' },
+                { id: 'z3', emoji: '⚽', size: 'text-7xl', type: 'big' },
+                { id: 'z4', emoji: '⚽', size: 'text-3xl', type: 'small' },
+                { id: 'z5', emoji: '🚗', size: 'text-7xl', type: 'big' },
+                { id: 'z6', emoji: '🚗', size: 'text-3xl', type: 'small' },
+                { id: 'z7', emoji: '🍰', size: 'text-7xl', type: 'big' },
+                { id: 'z8', emoji: '🍰', size: 'text-3xl', type: 'small' },
+                { id: 'z9', emoji: '🚀', size: 'text-7xl', type: 'big' },
+                { id: 'z10', emoji: '🚀', size: 'text-3xl', type: 'small' },
+                { id: 'z11', emoji: '🎁', size: 'text-7xl', type: 'big' },
+                { id: 'z12', emoji: '🎁', size: 'text-3xl', type: 'small' }
+            ]
+        },
+        {
+            id: 'feed',
+            title: 'Покорми животных',
+            type: 'feed',
+            targets: [
+                { id: 'dog', emoji: '🐶', type: 'bone' },
+                { id: 'monkey', emoji: '🐵', type: 'banana' },
+                { id: 'rabbit', emoji: '🐰', type: 'carrot' }
+            ],
+            items: [
+                { id: 'f1', emoji: '🦴', type: 'bone' },
+                { id: 'f2', emoji: '🍌', type: 'banana' },
+                { id: 'f3', emoji: '🥕', type: 'carrot' }
+            ]
+        }
+    ];
+
+    let currentLevelIdx = 0;
+    const gameState = { completedLevels: new Set(), progress: {}, isTransitioning: false };
+    const state = { draggedElement: null, draggedData: null };
+
+    function updateNavDots() {
+        const container = document.getElementById('levelDots');
+        container.innerHTML = '';
+        levels.forEach((l, i) => {
+            const dot = document.createElement('div');
+            dot.className = `level-dot ${i === currentLevelIdx ? 'active' : ''} ${gameState.completedLevels.has(l.id) ? 'done' : ''}`;
+            container.appendChild(dot);
+        });
+    }
+
+    function initLevel() {
+        if (gameState.isTransitioning) return;
+        const level = levels[currentLevelIdx];
+        document.getElementById('levelTitle').textContent = level.title;
+        document.getElementById('progressText').textContent = `Задание ${currentLevelIdx + 1}/${levels.length}`;
+        updateNavDots();
+        
+        const stage = document.getElementById('stage');
+        const pieces = document.getElementById('piecesContainer');
+        stage.innerHTML = ''; pieces.innerHTML = '';
+
+        if (level.type === 'sort') renderSort(level, stage, pieces);
+        else if (level.type === 'match') renderMatch(level, stage, pieces);
+        else if (level.type === 'shadow') renderShadow(level, stage, pieces);
+        else if (level.type === 'size') renderSize(level, stage, pieces);
+        else if (level.type === 'feed') renderFeed(level, stage, pieces);
+    }
+
+    // Уровень 1: Цвета (Центровка)
+    function renderSort(level, stage, pieces) {
+        const container = document.createElement('div');
+        container.className = 'buckets-wrapper';
+        stage.appendChild(container);
+
+        level.targets.forEach(t => {
+            const b = document.createElement('div');
+            b.className = 'drop-zone nature-basket';
+            b.style.backgroundColor = t.bg;
+            b.style.borderColor = t.color;
+            b.style.position = 'relative'; 
+            b.style.transform = 'none';
+            b.dataset.id = t.id; b.dataset.accept = t.type;
+            
+            const label = document.createElement('span');
+            label.className = 'basket-label';
+            label.style.color = t.color;
+            label.textContent = t.label;
+            b.appendChild(label);
+
+            const placedItems = (gameState.progress[level.id] || []).filter(p => p.targetId === t.id);
+            placedItems.forEach((p) => {
+                const item = document.createElement('div');
+                item.className = 'absolute text-4xl transition-all';
+                item.textContent = p.emoji;
+                item.style.bottom = (10 + Math.random() * 40) + 'px';
+                item.style.left = (10 + Math.random() * 60) + 'px';
+                item.style.transform = `rotate(${Math.random() * 40 - 20}deg)`;
+                b.appendChild(item);
+            });
+            container.appendChild(b);
+        });
+
+        level.items.forEach(item => {
+            if (!(gameState.progress[level.id] || []).some(p => p.itemId === item.id)) {
+                pieces.appendChild(createEmojiPiece(item, 'sort-item'));
+            }
+        });
+    }
+
+    // Уровень 2: Фигуры (SVG тени)
+    function renderMatch(level, stage, pieces) {
+        level.targets.forEach(t => {
+            const slot = document.createElement('div');
+            slot.className = 'drop-zone shape-slot';
+            slot.style.left = t.x; slot.style.top = t.y;
+            slot.dataset.id = t.id; slot.dataset.shape = t.shape;
+            
+            const shadow = createSvgShape(t.shape, '#4b5563', '100%'); 
+            shadow.style.opacity = '0.3';
+            slot.appendChild(shadow);
+            
+            const placed = (gameState.progress[level.id] || []).find(p => p.targetId === t.id);
+            if (placed) {
+                slot.innerHTML = '';
+                slot.appendChild(createSvgShape(t.shape, t.color, '100%')); 
+                slot.style.background = 'transparent';
+                slot.style.border = 'none';
+            }
+            stage.appendChild(slot);
+        });
+
+        level.items.forEach(item => {
+            if (!(gameState.progress[level.id] || []).some(p => p.itemId === item.id)) {
+                const wrap = document.createElement('div');
+                wrap.className = 'draggable w-20 h-20 bg-white rounded-xl shadow-md flex items-center justify-center p-2 cursor-pointer hover:scale-110 transition-transform';
+                wrap.dataset.type = 'shape-item'; wrap.dataset.shape = item.shape; wrap.dataset.id = item.id;
+                wrap.appendChild(createSvgShape(item.shape, item.color, '100%'));
+                wrap.addEventListener('mousedown', startDrag); wrap.addEventListener('touchstart', startDrag, {passive:false});
+                pieces.appendChild(wrap);
+            }
+        });
+    }
+
+    // Уровень 3: Тени животных (БОЛЬШЕ ЖИВОТНЫХ)
+    function renderShadow(level, stage, pieces) {
+        level.targets.forEach(t => {
+            const slot = document.createElement('div');
+            slot.className = 'drop-zone text-7xl shadow-target opacity-20 brightness-0';
+            slot.style.left = t.x; slot.style.top = t.y;
+            slot.textContent = t.emoji;
+            slot.dataset.id = t.id;
+
+            if ((gameState.progress[level.id] || []).some(p => p.targetId === t.id)) {
+                slot.classList.remove('opacity-20', 'brightness-0');
+            }
+            stage.appendChild(slot);
+        });
+
+        level.items.forEach(item => {
+            if (!(gameState.progress[level.id] || []).some(p => p.itemId === item.id)) {
+                pieces.appendChild(createEmojiPiece(item, 'shadow-item'));
+            }
+        });
+    }
+
+    // Уровень 4: Размеры
+    function renderSize(level, stage, pieces) {
+        const container = document.createElement('div');
+        container.className = 'size-bins-container';
+        stage.appendChild(container);
+
+        level.targets.forEach(t => {
+            const box = document.createElement('div');
+            box.className = 'drop-zone size-bin';
+            box.style.width = t.width; 
+            box.style.height = t.height;
+            box.style.position = 'relative'; // Сбрасываем абсолют для флекс-контейнера
+            box.style.transform = 'none';
+            box.dataset.id = t.id; box.dataset.accept = t.type;
+            
+            const label = document.createElement('div');
+            label.className = 'size-bin-label';
+            label.textContent = t.label;
+            box.appendChild(label);
+
+            const placed = (gameState.progress[level.id] || []).filter(p => p.targetId === t.id);
+            placed.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'absolute ' + (t.type === 'big' ? 'text-5xl' : 'text-3xl');
+                item.textContent = p.emoji;
+                item.style.top = (40 + Math.random() * (parseInt(t.height) - 80)) + 'px';
+                item.style.left = (10 + Math.random() * (parseInt(t.width) - 60)) + 'px';
+                item.style.transform = `rotate(${Math.random() * 60 - 30}deg)`;
+                box.appendChild(item);
+            });
+            container.appendChild(box);
+        });
+
+        level.items.forEach(item => {
+            if (!(gameState.progress[level.id] || []).some(p => p.itemId === item.id)) {
+                const wrap = document.createElement('div');
+                wrap.className = `draggable bg-white rounded-2xl shadow-md p-2 flex items-center justify-center cursor-pointer ${item.size === 'text-7xl' ? 'w-20 h-20 text-5xl' : 'w-14 h-14 text-3xl'}`;
+                wrap.textContent = item.emoji; wrap.dataset.type = 'size-item'; wrap.dataset.accept = item.type; wrap.dataset.id = item.id;
+                wrap.addEventListener('mousedown', startDrag); wrap.addEventListener('touchstart', startDrag, {passive:false});
+                pieces.appendChild(wrap);
+            }
+        });
+    }
+
+    // Уровень 5: Покорми животных (Новый)
+    function renderFeed(level, stage, pieces) {
+        const container = document.createElement('div');
+        container.className = 'feed-container';
+        stage.appendChild(container);
+
+        level.targets.forEach(t => {
+            const card = document.createElement('div');
+            card.className = 'animal-card drop-zone';
+            card.style.position = 'relative'; 
+            card.style.transform = 'none';
+            card.dataset.id = t.id; card.dataset.accept = t.type;
+
+            const animal = document.createElement('div');
+            animal.className = 'animal-emoji';
+            animal.textContent = t.emoji;
+            card.appendChild(animal);
+
+            const plate = document.createElement('div');
+            plate.className = 'food-plate';
+            card.appendChild(plate);
+
+            const placed = (gameState.progress[level.id] || []).find(p => p.targetId === t.id);
+            if (placed) {
+                const food = document.createElement('div');
+                food.className = 'text-4xl';
+                food.textContent = placed.emoji;
+                plate.appendChild(food);
+            }
+            container.appendChild(card);
+        });
+
+        level.items.forEach(item => {
+            if (!(gameState.progress[level.id] || []).some(p => p.itemId === item.id)) {
+                pieces.appendChild(createEmojiPiece(item, 'feed-item'));
+            }
+        });
+    }
+
+    function createEmojiPiece(item, type) {
+        const wrap = document.createElement('div');
+        wrap.className = 'draggable text-6xl bg-white rounded-2xl shadow-md p-3 flex items-center justify-center transition-transform active:scale-110 cursor-pointer min-w-[80px]';
+        wrap.textContent = item.emoji; 
+        wrap.dataset.type = type; wrap.dataset.id = item.id;
+        if (item.type) wrap.dataset.accept = item.type;
+        wrap.addEventListener('mousedown', startDrag); wrap.addEventListener('touchstart', startDrag, {passive:false});
+        return wrap;
+    }
+
+    function createSvgShape(type, color, size) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 100 100"); 
+        svg.style.width = size; svg.style.height = size;
+        const shape = document.createElementNS("http://www.w3.org/2000/svg", type === 'triangle' ? 'path' : (type === 'star' ? 'path' : (type === 'circle' ? 'circle' : 'rect')));
+        shape.setAttribute("fill", color);
+        if (type === 'circle') { shape.setAttribute("cx", "50"); shape.setAttribute("cy", "50"); shape.setAttribute("r", "45"); }
+        else if (type === 'square') { shape.setAttribute("x", "10"); shape.setAttribute("y", "10"); shape.setAttribute("width", "80"); shape.setAttribute("height", "80"); shape.setAttribute("rx", "15"); }
+        else if (type === 'triangle') { shape.setAttribute("d", "M50 10 L90 90 L10 90 Z"); }
+        else if (type === 'star') { shape.setAttribute("d", "M50 5 L63 38 L98 38 L70 59 L81 92 L50 72 L19 92 L30 59 L2 38 L37 38 Z"); }
+        svg.appendChild(shape); return svg;
+    }
+
+    function startDrag(e) {
+        if (e.cancelable) e.preventDefault();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const clone = e.currentTarget.cloneNode(true);
+        clone.style.position = 'fixed'; clone.style.width = e.currentTarget.offsetWidth + 'px';
+        clone.style.left = clientX + 'px'; clone.style.top = clientY + 'px';
+        clone.style.transform = 'translate(-50%, -50%) scale(1.2)'; clone.style.opacity = '0.9';
+        clone.style.zIndex = '1000'; clone.style.pointerEvents = 'none';
+        document.body.appendChild(clone);
+        state.draggedElement = clone; state.draggedData = {...e.currentTarget.dataset, emoji: e.currentTarget.textContent};
+        window.addEventListener('mousemove', drag); window.addEventListener('touchmove', drag, {passive:false});
+        window.addEventListener('mouseup', endDrag); window.addEventListener('touchend', endDrag);
+    }
+
+    function drag(e) {
+        if (!state.draggedElement) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        state.draggedElement.style.left = clientX + 'px'; state.draggedElement.style.top = clientY + 'px';
+    }
+
+    function endDrag(e) {
+        if (!state.draggedElement) return;
+        const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+        const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+        const level = levels[currentLevelIdx];
+        let found = false;
+
+        // Поиск элементов под курсором вручную
+        state.draggedElement.style.display = 'none'; 
+        const elemBelow = document.elementFromPoint(clientX, clientY);
+        state.draggedElement.style.display = 'block'; 
+
+        const zone = elemBelow ? elemBelow.closest('.drop-zone') : null;
+
+        if (zone) {
+            let match = false;
+            if (level.type === 'sort' && zone.dataset.accept === state.draggedData.accept) match = true;
+            else if (level.type === 'match' && zone.dataset.shape === state.draggedData.shape) match = true;
+            else if (level.type === 'shadow' && zone.dataset.id === state.draggedData.accept) match = true;
+            else if (level.type === 'size' && zone.dataset.accept === state.draggedData.accept) match = true;
+            else if (level.type === 'feed' && zone.dataset.accept === state.draggedData.accept) match = true;
+
+            if (match) {
+                if (!gameState.progress[level.id]) gameState.progress[level.id] = [];
+                gameState.progress[level.id].push({ 
+                    targetId: zone.dataset.id, 
+                    itemId: state.draggedData.id, 
+                    emoji: state.draggedData.emoji 
+                });
+                showCelebration(clientX, clientY, '🌟');
+                found = true;
+            }
+        }
+
+        state.draggedElement.remove(); state.draggedElement = null;
+        if (found) { initLevel(); checkLevelCompletion(level); }
+        window.removeEventListener('mousemove', drag); window.removeEventListener('touchmove', drag);
+        window.removeEventListener('mouseup', endDrag); window.removeEventListener('touchend', endDrag);
+    }
+
+    function checkLevelCompletion(level) {
+        const prog = gameState.progress[level.id] || [];
+        let done = false;
+        if (level.type === 'sort') done = prog.length === level.items.length;
+        else if (level.type === 'match') done = prog.length === level.targets.length;
+        else if (level.type === 'shadow') done = prog.length === level.targets.length;
+        else if (level.type === 'size') done = prog.length === level.items.length;
+        else if (level.type === 'feed') done = prog.length === level.targets.length;
+
+        if (done && !gameState.completedLevels.has(level.id)) {
+            gameState.isTransitioning = true; gameState.completedLevels.add(level.id);
+            updateNavDots(); showCelebration(window.innerWidth/2, window.innerHeight/2, '✅');
+            if (gameState.completedLevels.size === levels.length) {
+                setTimeout(() => document.getElementById('victoryModal').style.display = 'flex', 1500);
+            } else {
+                setTimeout(() => { gameState.isTransitioning = false; goToNext(); }, 2000);
+            }
+        }
+    }
+
+    function goToNext() { for(let i=1; i<=levels.length; i++) { const idx = (currentLevelIdx + i) % levels.length; if (!gameState.completedLevels.has(levels[idx].id)) { currentLevelIdx = idx; initLevel(); break; } } }
+
+    function showCelebration(x, y, text) {
+        const el = document.createElement('div'); el.className = 'celebration font-black pointer-events-none';
+        el.textContent = text; el.style.left = x + 'px'; el.style.top = y + 'px';
+        document.body.appendChild(el); setTimeout(() => el.remove(), 800);
+    }
+
+    document.getElementById('nextBtn').onclick = () => { currentLevelIdx = (currentLevelIdx + 1) % levels.length; initLevel(); };
+    document.getElementById('prevBtn').onclick = () => { currentLevelIdx = (currentLevelIdx - 1 + levels.length) % levels.length; initLevel(); };
+    document.getElementById('resetBtn').onclick = () => { gameState.completedLevels.clear(); gameState.progress = {}; initLevel(); };
+    window.onload = initLevel;
+</script>
+</body>
+</html>
